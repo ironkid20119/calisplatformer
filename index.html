@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>calis bit platformer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #222;
+            color: #fff;
+        }
+        #container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #controls {
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+        }
+        input, button, select {
+            padding: 8px 12px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: none;
+            margin-right: 10px;
+        }
+        input[type="number"] {
+            width: 80px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        #playBtn {
+            background: #2196F3;
+        }
+        #playBtn:hover:not(:disabled) {
+            background: #0b7dda;
+        }
+        #stopBtn {
+            background: #f44336;
+        }
+        #stopBtn:hover {
+            background: #da190b;
+        }
+        #gameArea {
+            background: #444;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        #gridContainer {
+            position: relative;
+            display: inline-block;
+        }
+        #grid {
+            display: inline-block;
+            border: 2px solid #666;
+            background: white;
+            cursor: crosshair;
+            position: relative;
+        }
+        .cell {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ddd;
+            box-sizing: border-box;
+            cursor: pointer;
+        }
+        .cell:hover {
+            outline: 2px solid yellow;
+        }
+        .cell.selected {
+            outline: 2px solid yellow;
+        }
+        .row {
+            height: 20px;
+            line-height: 0;
+            font-size: 0;
+        }
+        #player {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: red;
+            border: 2px solid darkred;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+        #legend {
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .legend-item {
+            display: inline-block;
+            margin-right: 20px;
+            margin-bottom: 10px;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #666;
+            vertical-align: middle;
+            margin-right: 5px;
+        }
+        #info {
+            background: #333;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>calis platformer maker</h1>
+        
+        <div id="legend">
+            <strong>Bit Types:</strong><br><br>
+            <div class="legend-item"><span class="legend-color" style="background: white;"></span> 0 = Empty</div>
+            <div class="legend-item"><span class="legend-color" style="background: red;"></span> 1 = Player Start</div>
+            <div class="legend-item"><span class="legend-color" style="background: black;"></span> 2 = Ground/Wall</div>
+            <div class="legend-item"><span class="legend-color" style="background: blue;"></span> 3 = Hazard (death)</div>
+            <div class="legend-item"><span class="legend-color" style="background: orange;"></span> 4 = Spring (bounce 5 blocks)</div>
+            <div class="legend-item"><span class="legend-color" style="background: green;"></span> 5 = Finish</div>
+            <div class="legend-item"><span class="legend-color" style="background: pink;"></span> 6 = Checkpoint</div>
+        </div>
+
+        <div id="controls">
+            <div class="control-group">
+                <label>Grid Width:</label>
+                <input type="number" id="widthInput" min="25" max="70" value="40">
+                <label>Grid Height:</label>
+                <input type="number" id="heightInput" min="30" max="60" value="30">
+                <button onclick="resizeGrid()">Resize Grid</button>
+            </div>
+            <div class="control-group">
+                <button onclick="clearGrid()">Clear All</button>
+                <button onclick="saveLevel()">Save Level</button>
+                <button onclick="loadLevel()">Load Level</button>
+                <button id="playBtn" onclick="startGame()">▶ Play Level</button>
+                <button id="stopBtn" onclick="stopGame()" style="display:none;">⬛ Stop</button>
+            </div>
+        </div>
+
+        <div id="info">
+            <strong>Instructions:</strong> Click a cell and type 0-6 to place bits. Controls: A/D = Move, W = Jump
+        </div>
+        <br>
+
+        <div id="gameArea">
+            <div id="gridContainer">
+                <div id="grid"></div>
+                <div id="player" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const BLOCK_SIZE = 20;
+        const MOVE_SPEED = 2.75;
+        const JUMP_POWER = -7;
+        const SPRING_POWER = -10;
+        const GRAVITY = 0.5;
+        const MAX_FALL_SPEED = 15;
+        
+        const colors = {
+            0: 'white',
+            1: 'red',
+            2: 'black',
+            3: 'blue',
+            4: 'orange',
+            5: 'green',
+            6: 'pink'
+        };
+
+        // Game state
+        let gridWidth = 40;
+        let gridHeight = 30;
+        let grid = [];
+        let isPlaying = false;
+        let selectedCell = null;
+        let checkpoint = null;
+        let keys = {};
+        
+        let player = {
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            grounded: false
+        };
+
+        // Initialize grid
+        function initGrid() {
+            grid = [];
+            for (let y = 0; y < gridHeight; y++) {
+                grid[y] = [];
+                for (let x = 0; x < gridWidth; x++) {
+                    grid[y][x] = 0;
+                }
+            }
+            renderGrid();
+        }
+
+        // Render grid in editor mode
+        function renderGrid() {
+            const gridEl = document.getElementById('grid');
+            gridEl.innerHTML = '';
+            gridEl.style.width = (gridWidth * 22) + 'px';
+            gridEl.style.height = (gridHeight * 22) + 'px';
+            
+            for (let y = 0; y < gridHeight; y++) {
+                const row = document.createElement('div');
+                row.className = 'row';
+                for (let x = 0; x < gridWidth; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.style.backgroundColor = colors[grid[y][x]];
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    cell.onclick = () => selectCell(x, y);
+                    row.appendChild(cell);
+                }
+                gridEl.appendChild(row);
+            }
+        }
+
+        // Select cell for editing
+        function selectCell(x, y) {
+            selectedCell = {x, y};
+            document.querySelectorAll('.cell').forEach(c => c.classList.remove('selected'));
+            const cell = document.querySelector(`[data-x="${x}"][data-y="${y}"]`);
+            if (cell) cell.classList.add('selected');
+        }
+
+        // Keyboard input
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            
+            if (!isPlaying && selectedCell && e.key >= '0' && e.key <= '6') {
+                const bit = parseInt(e.key);
+                grid[selectedCell.y][selectedCell.x] = bit;
+                renderGrid();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        // Grid controls
+        function resizeGrid() {
+            const newWidth = parseInt(document.getElementById('widthInput').value);
+            const newHeight = parseInt(document.getElementById('heightInput').value);
+            
+            if (newWidth < 25 || newWidth > 70 || newHeight < 30 || newHeight > 60) {
+                alert('Width must be 25-70 and height must be 30-60');
+                return;
+            }
+            
+            gridWidth = newWidth;
+            gridHeight = newHeight;
+            initGrid();
+        }
+
+        function clearGrid() {
+            if (confirm('Clear entire grid?')) {
+                initGrid();
+            }
+        }
+
+        function saveLevel() {
+            const data = JSON.stringify({
+                width: gridWidth,
+                height: gridHeight,
+                grid: grid
+            });
+            const name = prompt('Level name:', 'My Level') || 'My Level';
+            const levels = JSON.parse(localStorage.getItem('bitLevels') || '[]');
+            levels.push({data, name});
+            localStorage.setItem('bitLevels', JSON.stringify(levels));
+            alert('Level saved!');
+        }
+
+        function loadLevel() {
+            const levels = JSON.parse(localStorage.getItem('bitLevels') || '[]');
+            if (levels.length === 0) {
+                alert('No saved levels found!');
+                return;
+            }
+            
+            let msg = 'Select level to load:\n\n';
+            levels.forEach((l, i) => msg += `${i + 1}. ${l.name}\n`);
+            
+            const choice = prompt(msg + '\nEnter number:');
+            if (choice) {
+                const idx = parseInt(choice) - 1;
+                if (idx >= 0 && idx < levels.length) {
+                    const loaded = JSON.parse(levels[idx].data);
+                    gridWidth = loaded.width;
+                    gridHeight = loaded.height;
+                    grid = loaded.grid;
+                    document.getElementById('widthInput').value = gridWidth;
+                    document.getElementById('heightInput').value = gridHeight;
+                    renderGrid();
+                    alert('Level loaded!');
+                }
+            }
+        }
+
+        // Game functions
+        function startGame() {
+            // Find player and finish
+            let hasPlayer = false;
+            let hasFinish = false;
+            let startX = 0, startY = 0;
+            
+            for (let y = 0; y < gridHeight; y++) {
+                for (let x = 0; x < gridWidth; x++) {
+                    if (grid[y][x] === 1) {
+                        hasPlayer = true;
+                        startX = x;
+                        startY = y;
+                    }
+                    if (grid[y][x] === 5) hasFinish = true;
+                }
+            }
+            
+            if (!hasPlayer || !hasFinish) {
+                alert('Level must have a Player (1) and Finish (5) bit!');
+                return;
+            }
+            
+            // Initialize player
+            player.x = startX * BLOCK_SIZE;
+            player.y = startY * BLOCK_SIZE;
+            player.vx = 0;
+            player.vy = 0;
+            player.grounded = false;
+            checkpoint = null;
+            
+            // Switch to play mode
+            isPlaying = true;
+            document.getElementById('playBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('player').style.display = 'block';
+            
+            renderGameGrid();
+            gameLoop();
+        }
+
+        function stopGame() {
+            isPlaying = false;
+            document.getElementById('playBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('player').style.display = 'none';
+            renderGrid();
+        }
+
+        function renderGameGrid() {
+            const gridEl = document.getElementById('grid');
+            gridEl.innerHTML = '';
+            gridEl.style.width = (gridWidth * 22) + 'px';
+            gridEl.style.height = (gridHeight * 22) + 'px';
+            
+            for (let y = 0; y < gridHeight; y++) {
+                const row = document.createElement('div');
+                row.className = 'row';
+                for (let x = 0; x < gridWidth; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.style.backgroundColor = colors[grid[y][x]];
+                    row.appendChild(cell);
+                }
+                gridEl.appendChild(row);
+            }
+        }
+
+        function gameLoop() {
+            if (!isPlaying) return;
+            
+            updatePlayer();
+            renderPlayer();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updatePlayer() {
+            // Horizontal movement
+            if (keys['a'] || keys['arrowleft']) {
+                player.vx = -MOVE_SPEED;
+            } else if (keys['d'] || keys['arrowright']) {
+                player.vx = MOVE_SPEED;
+            } else {
+                player.vx = 0;
+            }
+            
+            // Apply gravity
+            player.vy += GRAVITY;
+            if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
+            
+            // Check if grounded
+            player.grounded = checkGround();
+            
+            // Jump
+            if ((keys['w'] || keys['arrowup']) && player.grounded) {
+                player.vy = JUMP_POWER;
+                player.grounded = false;
+            }
+            
+            // Move horizontally
+            player.x += player.vx;
+            handleHorizontalCollision();
+            
+            // Move vertically
+            player.y += player.vy;
+            handleVerticalCollision();
+            
+            // Check interactions
+            checkInteractions();
+            
+            // Bounds
+            if (player.x < 0) player.x = 0;
+            if (player.x > (gridWidth - 1) * BLOCK_SIZE) player.x = (gridWidth - 1) * BLOCK_SIZE;
+            if (player.y > gridHeight * BLOCK_SIZE) respawnPlayer();
+        }
+
+        function checkGround() {
+            const bottomY = player.y + BLOCK_SIZE;
+            const leftX = player.x;
+            const rightX = player.x + BLOCK_SIZE - 1;
+            
+            const gridBottomY = Math.floor(bottomY / BLOCK_SIZE);
+            const gridLeftX = Math.floor(leftX / BLOCK_SIZE);
+            const gridRightX = Math.floor(rightX / BLOCK_SIZE);
+            
+            if (gridBottomY >= gridHeight) return true;
+            if (gridBottomY < 0) return false;
+            
+            for (let x = gridLeftX; x <= gridRightX; x++) {
+                if (x >= 0 && x < gridWidth) {
+                    if (grid[gridBottomY][x] === 2) {
+                        const blockTop = gridBottomY * BLOCK_SIZE;
+                        if (Math.abs(bottomY - blockTop) < 2) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function handleHorizontalCollision() {
+            const leftX = player.x;
+            const rightX = player.x + BLOCK_SIZE;
+            const topY = player.y;
+            const bottomY = player.y + BLOCK_SIZE;
+            
+            const gridLeftX = Math.floor(leftX / BLOCK_SIZE);
+            const gridRightX = Math.floor((rightX - 1) / BLOCK_SIZE);
+            const gridTopY = Math.floor(topY / BLOCK_SIZE);
+            const gridBottomY = Math.floor((bottomY - 1) / BLOCK_SIZE);
+            
+            for (let y = gridTopY; y <= gridBottomY; y++) {
+                for (let x = gridLeftX; x <= gridRightX; x++) {
+                    if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                        if (grid[y][x] === 2) {
+                            const blockLeft = x * BLOCK_SIZE;
+                            const blockRight = (x + 1) * BLOCK_SIZE;
+                            
+                            if (player.vx > 0) {
+                                player.x = blockLeft - BLOCK_SIZE;
+                            } else if (player.vx < 0) {
+                                player.x = blockRight;
+                            }
+                            player.vx = 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        function handleVerticalCollision() {
+            const leftX = player.x;
+            const rightX = player.x + BLOCK_SIZE;
+            const topY = player.y;
+            const bottomY = player.y + BLOCK_SIZE;
+            
+            const gridLeftX = Math.floor(leftX / BLOCK_SIZE);
+            const gridRightX = Math.floor((rightX - 1) / BLOCK_SIZE);
+            const gridTopY = Math.floor(topY / BLOCK_SIZE);
+            const gridBottomY = Math.floor((bottomY - 1) / BLOCK_SIZE);
+            
+            for (let y = gridTopY; y <= gridBottomY; y++) {
+                for (let x = gridLeftX; x <= gridRightX; x++) {
+                    if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                        if (grid[y][x] === 2) {
+                            const blockTop = y * BLOCK_SIZE;
+                            const blockBottom = (y + 1) * BLOCK_SIZE;
+                            
+                            if (player.vy > 0) {
+                                player.y = blockTop - BLOCK_SIZE;
+                                player.vy = 0;
+                                player.grounded = true;
+                            } else if (player.vy < 0) {
+                                player.y = blockBottom;
+                                player.vy = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function checkInteractions() {
+            const gridX = Math.floor((player.x + BLOCK_SIZE / 2) / BLOCK_SIZE);
+            const gridY = Math.floor((player.y + BLOCK_SIZE / 2) / BLOCK_SIZE);
+            
+            if (gridX >= 0 && gridX < gridWidth && gridY >= 0 && gridY < gridHeight) {
+                const bit = grid[gridY][gridX];
+                
+                // Hazard
+                if (bit === 3) {
+                    respawnPlayer();
+                    return;
+                }
+                
+                // Spring
+                if (bit === 4 && player.vy >= 0) {
+                    player.vy = SPRING_POWER;
+                }
+                
+                // Checkpoint
+                if (bit === 6) {
+                    checkpoint = {x: gridX * BLOCK_SIZE, y: gridY * BLOCK_SIZE};
+                }
+                
+                // Finish
+                if (bit === 5) {
+                    alert('Level Complete! 🎉');
+                    stopGame();
+                }
+            }
+        }
+
+        function respawnPlayer() {
+            if (checkpoint) {
+                player.x = checkpoint.x;
+                player.y = checkpoint.y;
+            } else {
+                // Find player start
+                for (let y = 0; y < gridHeight; y++) {
+                    for (let x = 0; x < gridWidth; x++) {
+                        if (grid[y][x] === 1) {
+                            player.x = x * BLOCK_SIZE;
+                            player.y = y * BLOCK_SIZE;
+                        }
+                    }
+                }
+            }
+            player.vx = 0;
+            player.vy = 0;
+        }
+
+        function renderPlayer() {
+            const playerEl = document.getElementById('player');
+            playerEl.style.left = player.x + 'px';
+            playerEl.style.top = player.y + 'px';
+        }
+
+        // Initialize
+        initGrid();
+    </script>
+</body>
+</html>
