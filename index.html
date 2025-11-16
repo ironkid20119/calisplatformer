@@ -159,6 +159,7 @@
             <div class="legend-item"><span class="legend-color" style="background: orange;"></span> 4 = Spring (bounce 5 blocks)</div>
             <div class="legend-item"><span class="legend-color" style="background: green;"></span> 5 = Finish</div>
             <div class="legend-item"><span class="legend-color" style="background: pink;"></span> 6 = Checkpoint</div>
+            <div class="legend-item"><span class="legend-color" style="background: brown;"></span> 7 = Bridge (walk on top, press D to drop through)</div>
         </div>
 
         <div id="controls">
@@ -179,7 +180,7 @@
         </div>
 
         <div id="info">
-            <strong>Instructions:</strong> Click a cell and type 0-6 to place bits. Controls: A/D = Move, W = Jump
+            <strong>Instructions:</strong> Click a cell and type 0-7 to place bits. Controls: A/D = Move, W = Jump
         </div>
         <br>
 
@@ -206,7 +207,8 @@
             3: 'blue',
             4: 'orange',
             5: 'green',
-            6: 'pink'
+            6: 'pink',
+            7: 'brown'
         };
 
         // Game state
@@ -267,7 +269,7 @@
         document.addEventListener('keydown', (e) => {
             keys[e.key.toLowerCase()] = true;
             
-            if (!isPlaying && selectedCell && e.key >= '0' && e.key <= '6') {
+            if (!isPlaying && selectedCell && e.key >= '0' && e.key <= '7') {
                 const bit = parseInt(e.key);
                 grid[selectedCell.y][selectedCell.x] = bit;
                 renderGrid();
@@ -479,9 +481,17 @@
             
             for (let x = gridLeftX; x <= gridRightX; x++) {
                 if (x >= 0 && x < gridWidth) {
-                    if (grid[gridBottomY][x] === 2) {
+                    const blockType = grid[gridBottomY][x];
+                    if (blockType === 2) {
                         const blockTop = gridBottomY * BLOCK_SIZE;
                         if (Math.abs(bottomY - blockTop) < 2) {
+                            return true;
+                        }
+                    }
+                    // Bridge: only collide from top if not holding D
+                    if (blockType === 7 && !keys['d']) {
+                        const blockTop = gridBottomY * BLOCK_SIZE;
+                        if (Math.abs(bottomY - blockTop) < 2 && player.vy >= 0) {
                             return true;
                         }
                     }
@@ -534,7 +544,10 @@
             for (let y = gridTopY; y <= gridBottomY; y++) {
                 for (let x = gridLeftX; x <= gridRightX; x++) {
                     if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                        if (grid[y][x] === 2) {
+                        const blockType = grid[y][x];
+                        
+                        // Solid blocks
+                        if (blockType === 2) {
                             const blockTop = y * BLOCK_SIZE;
                             const blockBottom = (y + 1) * BLOCK_SIZE;
                             
@@ -546,6 +559,21 @@
                                 player.y = blockBottom;
                                 player.vy = 0;
                             }
+                        }
+                        
+                        // Bridge: only collide from top, not bottom
+                        if (blockType === 7) {
+                            const blockTop = y * BLOCK_SIZE;
+                            
+                            // Only collide when falling down and not holding D
+                            if (player.vy > 0 && !keys['d']) {
+                                if (player.y < blockTop) {
+                                    player.y = blockTop - BLOCK_SIZE;
+                                    player.vy = 0;
+                                    player.grounded = true;
+                                }
+                            }
+                            // No collision from below - allow jumping through
                         }
                     }
                 }
