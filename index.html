@@ -115,6 +115,10 @@
             box-sizing: border-box;
             z-index: 10;
         }
+        .player-char {
+            position: absolute;
+            z-index: 10;
+        }
         #legend {
             background: #333;
             padding: 15px;
@@ -182,7 +186,6 @@
         <div id="gameArea">
             <div id="gridContainer">
                 <div id="grid"></div>
-                <div id="player" style="display: none;"></div>
             </div>
         </div>
     </div>
@@ -215,13 +218,7 @@
         let checkpoint = null;
         let keys = {};
         
-        let player = {
-            x: 0,
-            y: 0,
-            vx: 0,
-            vy: 0,
-            grounded: false
-        };
+        let players = []; // Array of player objects
 
         // Initialize grid
         function initGrid() {
@@ -343,40 +340,45 @@
 
         // Game functions
         function startGame() {
-            // Find player and finish
-            let hasPlayer = false;
+            // Find all players and finish
+            let playerStarts = [];
             let hasFinish = false;
-            let startX = 0, startY = 0;
             
             for (let y = 0; y < gridHeight; y++) {
                 for (let x = 0; x < gridWidth; x++) {
                     if (grid[y][x] === 1) {
-                        hasPlayer = true;
-                        startX = x;
-                        startY = y;
+                        playerStarts.push({x, y});
                     }
                     if (grid[y][x] === 5) hasFinish = true;
                 }
             }
             
-            if (!hasPlayer || !hasFinish) {
-                alert('Level must have a Player (1) and Finish (5) bit!');
+            if (playerStarts.length === 0 || !hasFinish) {
+                alert('Level must have at least one Player (1) and a Finish (5) bit!');
                 return;
             }
             
-            // Initialize player
-            player.x = startX * BLOCK_SIZE;
-            player.y = startY * BLOCK_SIZE;
-            player.vx = 0;
-            player.vy = 0;
-            player.grounded = false;
+            if (playerStarts.length > 4) {
+                alert('Maximum 4 player characters allowed!');
+                return;
+            }
+            
+            // Initialize all players
+            players = playerStarts.map(start => ({
+                x: start.x * BLOCK_SIZE,
+                y: start.y * BLOCK_SIZE,
+                vx: 0,
+                vy: 0,
+                grounded: false,
+                finished: false
+            }));
+            
             checkpoint = null;
             
             // Switch to play mode
             isPlaying = true;
             document.getElementById('playBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
-            document.getElementById('player').style.display = 'block';
             
             renderGameGrid();
             gameLoop();
@@ -386,7 +388,7 @@
             isPlaying = false;
             document.getElementById('playBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('player').style.display = 'none';
+            players = [];
             renderGrid();
         }
 
@@ -412,13 +414,18 @@
         function gameLoop() {
             if (!isPlaying) return;
             
-            updatePlayer();
-            renderPlayer();
+            players.forEach(player => {
+                updatePlayer(player);
+            });
+            
+            renderPlayers();
             
             requestAnimationFrame(gameLoop);
         }
 
-        function updatePlayer() {
+        function updatePlayer(player) {
+            if (player.finished) return; // Don't update finished players
+            
             // Horizontal movement
             if (keys['a'] || keys['arrowleft']) {
                 player.vx = -MOVE_SPEED;
@@ -433,7 +440,7 @@
             if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
             
             // Check if grounded
-            player.grounded = checkGround();
+            player.grounded = checkGround(player);
             
             // Jump
             if ((keys['w'] || keys['arrowup']) && player.grounded) {
@@ -443,22 +450,22 @@
             
             // Move horizontally
             player.x += player.vx;
-            handleHorizontalCollision();
+            handleHorizontalCollision(player);
             
             // Move vertically
             player.y += player.vy;
-            handleVerticalCollision();
+            handleVerticalCollision(player);
             
             // Check interactions
-            checkInteractions();
+            checkInteractions(player);
             
             // Bounds
             if (player.x < 0) player.x = 0;
             if (player.x > (gridWidth - 1) * BLOCK_SIZE) player.x = (gridWidth - 1) * BLOCK_SIZE;
-            if (player.y > gridHeight * BLOCK_SIZE) respawnPlayer();
+            if (player.y > gridHeight * BLOCK_SIZE) respawnPlayer(player);
         }
 
-        function checkGround() {
+        function checkGround(player) {
             const bottomY = player.y + BLOCK_SIZE;
             const leftX = player.x;
             const rightX = player.x + BLOCK_SIZE - 1;
@@ -483,7 +490,7 @@
             return false;
         }
 
-        function handleHorizontalCollision() {
+        function handleHorizontalCollision(player) {
             const leftX = player.x;
             const rightX = player.x + BLOCK_SIZE;
             const topY = player.y;
@@ -513,7 +520,7 @@
             }
         }
 
-        function handleVerticalCollision() {
+        function handleVerticalCollision(player) {
             const leftX = player.x;
             const rightX = player.x + BLOCK_SIZE;
             const topY = player.y;
@@ -545,7 +552,7 @@
             }
         }
 
-        function checkInteractions() {
+        function checkInteractions(player) {
             const gridX = Math.floor((player.x + BLOCK_SIZE / 2) / BLOCK_SIZE);
             const gridY = Math.floor((player.y + BLOCK_SIZE / 2) / BLOCK_SIZE);
             
@@ -554,7 +561,7 @@
                 
                 // Hazard
                 if (bit === 3) {
-                    respawnPlayer();
+                    respawnPlayer(player);
                     return;
                 }
                 
@@ -569,24 +576,38 @@
                 }
                 
                 // Finish
-                if (bit === 5) {
-                    alert('Level Complete! 🎉');
-                    stopGame();
+                if (bit === 5 && !player.finished) {
+                    player.finished = true;
+                    
+                    // Check if all players finished (only if 2+ players)
+                    if (players.length >= 2) {
+                        const allFinished = players.every(p => p.finished);
+                        if (allFinished) {
+                            alert('Level Complete! All characters reached the finish! 🎉');
+                            stopGame();
+                        }
+                    } else {
+                        alert('Level Complete! 🎉');
+                        stopGame();
+                    }
                 }
             }
         }
 
-        function respawnPlayer() {
+        function respawnPlayer(player) {
             if (checkpoint) {
                 player.x = checkpoint.x;
                 player.y = checkpoint.y;
             } else {
-                // Find player start
+                // Find first player start (or original position)
                 for (let y = 0; y < gridHeight; y++) {
                     for (let x = 0; x < gridWidth; x++) {
                         if (grid[y][x] === 1) {
                             player.x = x * BLOCK_SIZE;
                             player.y = y * BLOCK_SIZE;
+                            player.vx = 0;
+                            player.vy = 0;
+                            return;
                         }
                     }
                 }
@@ -595,10 +616,28 @@
             player.vy = 0;
         }
 
-        function renderPlayer() {
-            const playerEl = document.getElementById('player');
-            playerEl.style.left = player.x + 'px';
-            playerEl.style.top = player.y + 'px';
+        function renderPlayers() {
+            const gridEl = document.getElementById('grid');
+            
+            // Remove old player elements
+            const oldPlayers = gridEl.querySelectorAll('.player-char');
+            oldPlayers.forEach(p => p.remove());
+            
+            // Render each player
+            players.forEach((player, index) => {
+                const playerEl = document.createElement('div');
+                playerEl.className = 'player-char';
+                playerEl.style.position = 'absolute';
+                playerEl.style.left = player.x + 'px';
+                playerEl.style.top = player.y + 'px';
+                playerEl.style.width = BLOCK_SIZE + 'px';
+                playerEl.style.height = BLOCK_SIZE + 'px';
+                playerEl.style.backgroundColor = player.finished ? 'lime' : 'red';
+                playerEl.style.border = '2px solid ' + (player.finished ? 'darkgreen' : 'darkred');
+                playerEl.style.boxSizing = 'border-box';
+                playerEl.style.zIndex = '10';
+                gridEl.appendChild(playerEl);
+            });
         }
 
         // Initialize
